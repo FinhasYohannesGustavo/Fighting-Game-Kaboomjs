@@ -1,7 +1,7 @@
 kaboom({
     width: 1280,
     height: 720,
-    scale: 0.7,
+    scale: 1.05,
     debug: false
 })
 
@@ -58,6 +58,7 @@ loadSprite("run-player1", "assets/run-player1.png", {
 loadSprite("death-player1", "assets/death-player1.png", {
     sliceX: 6, sliceY: 1, anims: { "death": { from: 0, to: 5, speed: 10}}
 })
+loadSprite("shield", "assets/shield.png")
 
 loadSprite("idle-player2", "assets/idle-player2.png", {
     sliceX: 4, sliceY: 1, anims: { "idle": { from: 0, to: 3, speed: 8, loop: true}}
@@ -173,7 +174,7 @@ scene("fight", () => {
         ])
     }
 
-    setGravity(1200)
+    setGravity(1100)
 
     const player1 = makePlayer(200, 100, 16, 42, 4, "player1")
     player1.use(sprite(player1.sprites.idle))
@@ -292,7 +293,7 @@ scene("fight", () => {
         destroyAll(player1.id + "attackHitbox")
     })
 
-    const player2 = makePlayer(1000, 200, 16, 52, 4, "player2")
+    const player2 = makePlayer(1000, 200, 16, 45, 4, "player2")
     player2.use(sprite(player2.sprites.idle))
     player2.play("idle")
     player2.flipX = true
@@ -330,7 +331,131 @@ scene("fight", () => {
     onKeyRelease("down", () => {
         destroyAll(player2.id + "attackHitbox")
     })
-    
+
+    // Variables for Peterson's algorithm
+    let shieldTurn = 0;
+    let shieldFlag = [false, false];
+
+    // Variable to track shield usage
+    let shieldInUse = false;
+    let lastShieldUser = null;
+    let canUseShieldAgain = [true, true]; // Track cooldown for each player
+
+    // Cooldown period in milliseconds
+    const shieldCooldown = 2000;
+
+   // Initialize shieldActive flag for each player
+    player1.shieldActive = false;
+    player2.shieldActive = false;
+
+function tryUseShield(playerIndex, player, shieldSpriteName, excludedKeys) {
+    // Check if any excluded key is pressed
+    for (const key of excludedKeys) {
+        if (isKeyDown(key)) {
+            return;
+        }
+    }
+
+    // Peterson's algorithm entry section
+    shieldFlag[playerIndex] = true;
+    shieldTurn = 1 - playerIndex;
+
+    while (shieldFlag[1 - playerIndex] && shieldTurn === 1 - playerIndex) {
+        // Busy-wait until it's this player's turn
+    }
+
+    // Critical Section
+    if (!shieldInUse && canUseShieldAgain[playerIndex]) {
+        shieldInUse = true;
+        lastShieldUser = playerIndex;
+        player.shieldActive = true;
+
+        // Calculate the position for the shield in front of the player
+        var shieldOffsetX = player.flipX ? -player.width / 1.5 : player.width / 20;
+        var shieldPosX = player.pos.x + shieldOffsetX;
+        var shieldPosY = 410;
+
+        // Remove any existing shield sprites before adding a new one
+        if (player.shieldSprite) {
+            destroy(player.shieldSprite);
+        }
+
+        player.shieldSprite = add([
+            sprite(shieldSpriteName),
+            pos(shieldPosX, shieldPosY), // Position the shield in front of the player
+            scale(8),
+            "defenseShield",
+        ]);
+
+        canUseShieldAgain[playerIndex] = false;
+
+        // Start cooldown timer
+        setTimeout(() => {
+            canUseShieldAgain[playerIndex] = true;
+        }, shieldCooldown);
+
+        // Release the shield after some time
+        setTimeout(() => {
+            if (player.shieldSprite) {
+                destroy(player.shieldSprite);
+                player.shieldSprite = null;
+            }
+            shieldInUse = false;
+            player.isDefending = false;
+            player.shieldActive = false; // Shield is no longer active
+        }, 1000); // Keep the shield for 3 seconds
+    }
+
+    // Exit section for Peterson's algorithm
+    shieldFlag[playerIndex] = false;
+}
+
+// Player 1 (index 0)
+onKeyPress("f", () => {
+    player1.isDefending = true;
+    tryUseShield(0, player1, "shield", ["a", "d", "w"]);
+});
+
+// Player 2 (index 1)
+onKeyPress("l", () => {
+    player2.isDefending = true;
+    tryUseShield(1, player2, "shield", ["left", "right", "up"]);
+});
+
+// Disable excluded keys when shield is active
+onKeyDown(["a", "d", "w"], () => {
+    if (player1.shieldActive) {
+        return; // Ignore the input if the shield is active
+    }
+    // Normal movement logic here
+});
+
+onKeyDown(["left", "right", "up"], () => {
+    if (player2.shieldActive) {
+        return; // Ignore the input if the shield is active
+    }
+    // Normal movement logic here
+});
+
+
+
+    //Adding defense into the game
+    // Add defense flags to players
+    player1.isDefending = false;
+    player2.isDefending = false;
+
+
+    // Player 1 (index 0)
+    onKeyPress("f", () => {
+        player1.isDefending = true;
+        tryUseShield(0, player1, player2, "shield",["a", "d", "w"]);
+    });
+
+    // Player 2 (index 1)
+    onKeyPress("l", () => {
+        player2.isDefending = true;
+        tryUseShield(1, player2, player1, "shield",["left", "right", "up"]);
+    });
     const counter = add([
         rect(100,100),
         pos(center().x, center().y - 300),
@@ -400,9 +525,10 @@ scene("fight", () => {
         rotate(180)
     ])
 
+    // Modify collision detection to check defense status
     player1.onCollide(player2.id + "attackHitbox", () => {
-        if (gameOver) {
-            return
+        if (gameOver || player1.isDefending) {
+            return;
         }
         
         if (player1.health !== 0) {
@@ -434,8 +560,8 @@ scene("fight", () => {
     ])
     
     player2.onCollide(player1.id + "attackHitbox", () => {
-        if (gameOver) {
-            return
+        if (gameOver || player2.isDefending) {
+            return;
         }
         
         if (player2.health !== 0) {
