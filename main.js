@@ -348,6 +348,82 @@ scene("fight", () => {
     player1.shieldActive = false;
     player2.shieldActive = false;
 
+    // function tryUseShield(playerIndex, player, shieldSpriteName, excludedKeys) {
+    //     // Check if any excluded key is pressed
+    //     for (const key of excludedKeys) {
+    //         if (isKeyDown(key)) {
+    //             return;
+    //         }
+    //     }
+
+    //     // Peterson's algorithm entry section
+    //     shieldFlag[playerIndex] = true;
+    //     shieldTurn = 1 - playerIndex;
+
+    //     while (shieldFlag[1 - playerIndex] && shieldTurn === 1 - playerIndex) {
+    //         // Busy-wait until it's this player's turn
+    //     }
+
+    //     // Critical Section
+    //     if (!shieldInUse && canUseShieldAgain[playerIndex]) {
+    //         shieldInUse = true;
+    //         lastShieldUser = playerIndex;
+    //         player.shieldActive = true;
+
+    //         // Calculate the position for the shield in front of the player
+    //         var shieldOffsetX = player.flipX ? -player.width / 1.5 : player.width / 20;
+    //         var shieldPosX = player.pos.x + shieldOffsetX;
+    //         var shieldPosY = 410;
+
+    //         // Remove any existing shield sprites before adding a new one
+    //         if (player.shieldSprite) {
+    //             destroy(player.shieldSprite);
+    //         }
+
+    //         player.shieldSprite = add([
+    //             sprite(shieldSpriteName),
+    //             pos(shieldPosX, shieldPosY), // Position the shield in front of the player
+    //             scale(8),
+    //             "defenseShield",
+    //         ]);
+
+    //         canUseShieldAgain[playerIndex] = false;
+
+    //         // Start cooldown timer
+    //         setTimeout(() => {
+    //             canUseShieldAgain[playerIndex] = true;
+    //         }, shieldCooldown);
+
+    //         // Release the shield after some time
+    //         setTimeout(() => {
+    //             if (player.shieldSprite) {
+    //                 destroy(player.shieldSprite);
+    //                 player.shieldSprite = null;
+    //             }
+    //             shieldInUse = false;
+    //             player.isDefending = false;
+    //             player.shieldActive = false; // Shield is no longer active
+    //         }, 1000); // Keep the shield for 1 second
+    //     }
+
+    //     // Exit section for Peterson's algorithm
+    //     shieldFlag[playerIndex] = false;
+    // }
+
+// Initialize the semaphore with a value of 1, meaning the shield is available
+let shieldSemaphore = 1;
+
+function wait(semaphore) {
+    while (semaphore <= 0) {
+        // Busy-wait until the semaphore is greater than 0
+    }
+    semaphore--; // Decrement the semaphore to indicate the resource is in use
+}
+
+function signal(semaphore) {
+    semaphore++; // Increment the semaphore to indicate the resource is available
+}
+
 function tryUseShield(playerIndex, player, shieldSpriteName, excludedKeys) {
     // Check if any excluded key is pressed
     for (const key of excludedKeys) {
@@ -356,13 +432,8 @@ function tryUseShield(playerIndex, player, shieldSpriteName, excludedKeys) {
         }
     }
 
-    // Peterson's algorithm entry section
-    shieldFlag[playerIndex] = true;
-    shieldTurn = 1 - playerIndex;
-
-    while (shieldFlag[1 - playerIndex] && shieldTurn === 1 - playerIndex) {
-        // Busy-wait until it's this player's turn
-    }
+    // Wait (P operation)
+    wait(shieldSemaphore);
 
     // Critical Section
     if (!shieldInUse && canUseShieldAgain[playerIndex]) {
@@ -403,12 +474,13 @@ function tryUseShield(playerIndex, player, shieldSpriteName, excludedKeys) {
             shieldInUse = false;
             player.isDefending = false;
             player.shieldActive = false; // Shield is no longer active
-        }, 1000); // Keep the shield for 3 seconds
-    }
 
-    // Exit section for Peterson's algorithm
-    shieldFlag[playerIndex] = false;
+            // Signal (V operation)
+            signal(shieldSemaphore);
+        }, 1000); // Keep the shield for 1 second
+    }
 }
+
 
 // Player 1 (index 0)
 onKeyPress("f", () => {
